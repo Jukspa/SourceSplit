@@ -11,10 +11,9 @@ namespace LiveSplit.SourceSplit.GameSpecific
         // start: crosshair appear
         // ending: crosshair disappear
 
-        private int _playerSuppressingCrosshairOffset = -1;
-        private bool _prevCrosshairSuppressed;
         private bool _onceFlag;
         private const int VAULT_SAVE_TICK = 4261;
+        private int _glados_index;
 
         public Portal()
         {
@@ -27,24 +26,15 @@ namespace LiveSplit.SourceSplit.GameSpecific
             this.EndOffsetTicks = -1;
         }
 
-        public override void OnGameAttached(GameState state)
-        {
-            ProcessModuleWow64Safe server = state.GameProcess.ModulesWow64Safe().FirstOrDefault(x => x.ModuleName.ToLower() == "server.dll");
-            Trace.Assert(server != null);
-
-            var scanner = new SignatureScanner(state.GameProcess, server.BaseAddress, server.ModuleMemorySize);
-
-            if (GameMemory.GetBaseEntityMemberOffset("m_bSuppressingCrosshair", state.GameProcess, scanner, out _playerSuppressingCrosshairOffset))
-                Debug.WriteLine("CPortalPlayer::m_bSuppressingCrosshair offset = 0x" + _playerSuppressingCrosshairOffset.ToString("X"));
-        }
-
         public override void OnSessionStart(GameState state)
         {
             base.OnSessionStart(state);
 
-            if (this.IsLastMap && state.PlayerEntInfo.EntityPtr != IntPtr.Zero && _playerSuppressingCrosshairOffset != -1)
-                state.GameProcess.ReadValue(state.PlayerEntInfo.EntityPtr + _playerSuppressingCrosshairOffset, out _prevCrosshairSuppressed);
-
+            if (this.IsLastMap && state.PlayerEntInfo.EntityPtr != IntPtr.Zero)
+            {
+                this._glados_index = state.GetEntIndexByName("glados_body");
+                Debug.WriteLine("Glados index is " + this._glados_index);
+            }
             _onceFlag = false;
         }
 
@@ -53,7 +43,7 @@ namespace LiveSplit.SourceSplit.GameSpecific
             if (this.IsFirstMap)
             {
                 // vault save starts at tick 4261, but update interval may miss it so be a little lenient
-                if ((state.TickBase >= VAULT_SAVE_TICK && state.TickBase <= VAULT_SAVE_TICK+4) && !_onceFlag)
+                if ((state.TickBase >= VAULT_SAVE_TICK && state.TickBase <= VAULT_SAVE_TICK + 4) && !_onceFlag)
                 {
                     _onceFlag = true;
                     int ticksSinceVaultSaveTick = state.TickBase - VAULT_SAVE_TICK; // account for missing ticks if update interval missed it
@@ -67,19 +57,17 @@ namespace LiveSplit.SourceSplit.GameSpecific
             else if (!this.IsLastMap || _onceFlag)
                 return GameSupportResult.DoNothing;
 
-            if (state.PlayerEntInfo.EntityPtr != IntPtr.Zero && _playerSuppressingCrosshairOffset != -1)
+            if (this._glados_index != -1)
             {
-                bool crosshairSuppressed;
-                state.GameProcess.ReadValue(state.PlayerEntInfo.EntityPtr + _playerSuppressingCrosshairOffset, out crosshairSuppressed);
+                var newglados = state.GetEntInfoByIndex(_glados_index);
 
-                if (crosshairSuppressed && !_prevCrosshairSuppressed)
+                if (newglados.EntityPtr == IntPtr.Zero)
                 {
+                    _glados_index = -1;
+                    Debug.WriteLine("robot lady boom detected");
                     _onceFlag = true;
-                    Debug.WriteLine("porto crosshair detected");
                     return GameSupportResult.PlayerLostControl;
                 }
-
-                _prevCrosshairSuppressed = crosshairSuppressed;                
             }
 
             return GameSupportResult.DoNothing;

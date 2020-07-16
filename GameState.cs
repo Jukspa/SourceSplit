@@ -99,6 +99,56 @@ namespace LiveSplit.SourceSplit
 
             return IntPtr.Zero;
         }
+
+        // warning: expensive -  7ms on i5
+        // do not call frequently!
+        public CEntInfoV2 GetEntInfoByName(string name)
+        {
+            const int MAX_ENTS = 2048; // TODO: is portal2's max higher?
+
+            for (int i = 0; i < MAX_ENTS; i++)
+            {
+                CEntInfoV2 info = this.GetEntInfoByIndex(i);
+                if (info.EntityPtr == IntPtr.Zero)
+                    continue;
+
+                IntPtr namePtr;
+                this.GameProcess.ReadPointer(info.EntityPtr + this.GameOffsets.BaseEntityTargetNameOffset, false, out namePtr);
+                if (namePtr == IntPtr.Zero)
+                    continue;
+
+                string n;
+                this.GameProcess.ReadString(namePtr, ReadStringType.ASCII, 32, out n);  // TODO: find real max len
+                if (n == name)
+                    return info;
+            }
+
+            return new CEntInfoV2();
+        }
+
+        public int GetEntIndexByName(string name)
+        {
+            const int MAX_ENTS = 2048; // TODO: is portal2's max higher?
+
+            for (int i = 0; i < MAX_ENTS; i++)
+            {
+                CEntInfoV2 info = this.GetEntInfoByIndex(i);
+                if (info.EntityPtr == IntPtr.Zero)
+                    continue;
+
+                IntPtr namePtr;
+                this.GameProcess.ReadPointer(info.EntityPtr + this.GameOffsets.BaseEntityTargetNameOffset, false, out namePtr);
+                if (namePtr == IntPtr.Zero)
+                    continue;
+
+                string n;
+                this.GameProcess.ReadString(namePtr, ReadStringType.ASCII, 32, out n);  // TODO: find real max len
+                if (n == name)
+                    return i;
+            }
+
+            return -1;
+        }
     }
 
     struct GameOffsets
